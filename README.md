@@ -31,4 +31,5 @@ In main directory run command:
   mkdir build && cd build
   cmake ..
 
-In the next step go to directory with
+In the next step go to directory engine\temperature_measurement and run command:
+  make -j

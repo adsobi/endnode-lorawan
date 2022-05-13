@@ -1,4 +1,4 @@
-# pico-lorawan API
+# end-node-lorawan API
 
 ## Include Library
 
@@ -35,13 +35,13 @@ Initialize the library for ABP.
 const struct lorawan_abp_settings abp_settings = {
     // LoRaWAN device address (32-bit)
     .device_address = "00000000",
-  
+
     // LoRaWAN Network Session Key (128-bit)
     .network_session_key = "00000000000000000000000000000000",
-  
+
     // LoRaWAN Application Session Key (128-bit)
     .app_session_key = "00000000000000000000000000000000",
-  
+
     // LoRaWAN Channel Mask,  NULL value will use the default channel mask
     // for US915 with TTN use "FF0000000000000000020000"
     .channel_mask = NULL,
@@ -65,10 +65,10 @@ Initialize the library for OTAA.
 const struct lorawan_otaa_settings otaa_settings = {
     // LoRaWAN Device EUI (64-bit), NULL value will use Default Dev EUI
     .device_eui   = "0000000000000000",
-  
+
     // LoRaWAN Application / Join EUI (64-bit)
     .app_eui      = "0000000000000000",
-  
+
     // LoRaWAN Application Key (128-bit)
     .app_key      = "00000000000000000000000000000000",
 
