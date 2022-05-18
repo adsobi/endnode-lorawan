@@ -1,4 +1,4 @@
-# pico-lorawan
+# end-node-lorawan
 Enable LoRaWAN communications on your [Raspberry Pi Pico](https://www.raspberrypi.org/products/raspberry-pi-pico/) or any RP2040 based board using a [Semtech SX1276 radio module](https://www.semtech.com/apps/product.php?pn=SX1276).
 
 Based on the Semtech's [LoRaWAN end-device stack implementation and example projects](https://github.com/Lora-net/LoRaMac-node).
@@ -33,3 +33,4 @@ In main directory run command:
 
 In the next step go to directory engine\temperature_measurement and run command:
   make -j
+

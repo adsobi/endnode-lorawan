@@ -17,116 +17,155 @@
 #include "hardware/i2c.h"
 
 #include "pico/stdlib.h"
+
+extern "C"
+{
 #include "pico/lorawan.h"
+}
+
+#include "Adafruit_SHT4x.h"
 #include "tusb.h"
 
 // edit with LoRaWAN Node Region and OTAA settings
 #include "config.h"
-
+#define I2C_PORT i2c0
 // pin configuration for SX1276 radio module
 const struct lorawan_sx1276_settings sx1276_settings = {
     .spi = {
         .inst = PICO_DEFAULT_SPI_INSTANCE,
         .mosi = PICO_DEFAULT_SPI_TX_PIN,
         .miso = PICO_DEFAULT_SPI_RX_PIN,
-        .sck  = PICO_DEFAULT_SPI_SCK_PIN,
-        .nss  = 8
-    },
+        .sck = PICO_DEFAULT_SPI_SCK_PIN,
+        .nss = 8},
     .reset = 9,
-    .dio0  = 7,
-    .dio1  = 10
-};
+    .dio0 = 7,
+    .dio1 = 10};
 
 // OTAA settings
 const struct lorawan_otaa_settings otaa_settings = {
-    .device_eui   = LORAWAN_DEVICE_EUI,
-    .app_eui      = LORAWAN_APP_EUI,
-    .app_key      = LORAWAN_APP_KEY,
-    .channel_mask = LORAWAN_CHANNEL_MASK
-};
+    .device_eui = LORAWAN_DEVICE_EUI,
+    .app_eui = LORAWAN_APP_EUI,
+    .app_key = LORAWAN_APP_KEY,
+    .channel_mask = LORAWAN_CHANNEL_MASK};
 
 // variables for receiving data
 int receive_length = 0;
 uint8_t receive_buffer[242];
 uint8_t receive_port = 0;
+static int addr = 0x44;
+Adafruit_SHT4x sht4 = Adafruit_SHT4x();
 
 // functions used in main
 void internal_temperature_init();
 float internal_temperature_get();
 
-int main( void )
+// void temp_sensor_init(void) {
+//     sleep_ms(1000);
+//     uint8_t reg = 0x00;
+//     uint8_t chipID[1];
+//     i2c_write_blocking(I2C_PORT, addr, $reg, 1, true);
+//     i2c_read_blocking(I2C_PORT, addr, chipID, 1, true);
+
+//     if (chipID[0] != 0xA0) {
+//         while(1) {
+//             printf('ChipID not connected');
+//             sleep_ms(5000);
+//         }
+//     }
+// }
+
+void init_sht4x_sensor()
+{
+    printf("Adafruit SHT4x test");
+    if (!sht4.begin())
+    {
+        printf("Couldn't find SHT4x");
+        while (1)
+            delay(1);
+    }
+    printf("Found SHT4x sensor");
+
+    // You can have 3 different precisions, higher precision takes longer
+    sht4.setPrecision(SHT4X_MED_PRECISION);
+    switch (sht4.getPrecision())
+    {
+    case SHT4X_HIGH_PRECISION:
+        printf("High precision");
+        break;
+    case SHT4X_MED_PRECISION:
+        printf("Med precision");
+        break;
+    case SHT4X_LOW_PRECISION:
+        printf("Low precision");
+        break;
+    }
+
+    // You can have 6 different heater settings
+    // higher heat and longer times uses more power
+    // and reads will take longer too!
+    sht4.setHeater(SHT4X_NO_HEATER);
+    switch (sht4.getHeater())
+    {
+    case SHT4X_NO_HEATER:
+        printf("No heater");
+        break;
+    case SHT4X_HIGH_HEATER_1S:
+        printf("High heat for 1 second");
+        break;
+    case SHT4X_HIGH_HEATER_100MS:
+        printf("High heat for 0.1 second");
+        break;
+    case SHT4X_MED_HEATER_1S:
+        printf("Medium heat for 1 second");
+        break;
+    case SHT4X_MED_HEATER_100MS:
+        printf("Medium heat for 0.1 second");
+        break;
+    case SHT4X_LOW_HEATER_1S:
+        printf("Low heat for 1 second");
+        break;
+    case SHT4X_LOW_HEATER_100MS:
+        printf("Low heat for 0.1 second");
+        break;
+    }
+}
+
+int main(void)
 {
     char devEui[17];
 
     // initialize stdio and wait for USB CDC connect
     stdio_init_all();
-    while (!tud_cdc_connected()) {
+    while (!tud_cdc_connected())
+    {
         tight_loop_contents();
     }
 
     printf("Pico LoRaWAN - OTAA - Temperature + LED\n\n");
-    printf("Dev EUI = %s\n", lorawan_default_dev_eui(devEui));
 
-    ////////////////////////////////////////////////
-    #if !defined(i2c_default) || !defined(PICO_DEFAULT_I2C_SDA_PIN) || !defined(PICO_DEFAULT_I2C_SCL_PIN)
-#warning i2c/bus_scan example requires a board with I2C pins
-    puts("Default I2C pins were not defined");
-#else
-    // This example will use I2C0 on the default SDA and SCL pins (GP4, GP5 on a Pico)
-    i2c_init(i2c_default, 100 * 1000);
-    gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
-    gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
-    // Make the I2C pins available to picotool
-    bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN, PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
-
-    printf("\nI2C Bus Scan\n");
-    printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
-
-    for (int addr = 0; addr < (1 << 7); ++addr) {
-        if (addr % 16 == 0) {
-            printf("%02x ", addr);
-        }
-
-        // Perform a 1-byte dummy read from the probe address. If a slave
-        // acknowledges this address, the function returns the number of bytes
-        // transferred. If the address byte is ignored, the function returns
-        // -1.
-
-        // Skip over any reserved addresses.
-        int ret;
-        uint8_t rxdata;
-        if (reserved_addr(addr))
-            ret = PICO_ERROR_GENERIC;
-        else
-            ret = i2c_read_blocking(i2c_default, addr, &rxdata, 1, false);
-
-        printf(ret < 0 ? "." : "@");
-        printf(addr % 16 == 15 ? "\n" : "  ");
-    }
-    printf("Done.\n");
-    return 0;
-#endif
-/////////////////////////////
-
+    init_sht4x_sensor();
+    sensors_event_t humidity, temp;
     // initialize the LED pin and internal temperature ADC
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 
-    internal_temperature_init();
+    //internal_temperature_init();
 
     // uncomment next line to enable debug
     lorawan_debug(true);
 
     // initialize the LoRaWAN stack
     printf("Initilizating LoRaWAN ... ");
-    if (lorawan_init_otaa(&sx1276_settings, LORAWAN_REGION, &otaa_settings) < 0) {
+    if (lorawan_init_otaa(&sx1276_settings, LORAWAN_REGION, &otaa_settings) < 0)
+    {
         printf("failed!!!\n");
-        while (1) {
+        while (1)
+        {
             tight_loop_contents();
         }
-    } else {
+    }
+    else
+    {
         printf("success!\n");
     }
 
@@ -134,33 +173,47 @@ int main( void )
     printf("Joining LoRaWAN network ...");
     lorawan_join();
 
-    while (!lorawan_is_joined()) {
+    while (!lorawan_is_joined())
+    {
         lorawan_process_timeout_ms(1000);
         printf(".");
+
+        sht4.getEvent(&humidity, &temp);
+        printf("Temperature: %f degrees C\n", temp.temperature);
+        printf("Humidity: %f% rH", humidity.relative_humidity);
     }
     printf(" joined successfully!\n");
 
     // loop forever
-    while (1) {
+    while (1)
+    {
         // get the internal temperature
         int8_t adc_temperature_byte = internal_temperature_get();
 
+        sht4.getEvent(&humidity, &temp);
+        printf("Temperature: %f degrees C\n", temp.temperature);
+        printf("Humidity: %f% rH", humidity.relative_humidity);
         // send the internal temperature as a (signed) byte in an unconfirmed uplink message
-        printf("sending internal temperature: %d °C (0x%02x)... ", adc_temperature_byte, adc_temperature_byte);
-        if (lorawan_send_unconfirmed(&adc_temperature_byte, sizeof(adc_temperature_byte), 2) < 0) {
+        if (lorawan_send_unconfirmed(&temp.temperature, sizeof(temp.temperature), 2) < 0)
+        {
             printf("failed!!!\n");
-        } else {
+        }
+        else
+        {
             printf("success!\n");
         }
 
         // wait for up to 30 seconds for an event
-        if (lorawan_process_timeout_ms(30000) == 0) {
+        if (lorawan_process_timeout_ms(30000) == 0)
+        {
             // check if a downlink message was received
             receive_length = lorawan_receive(receive_buffer, sizeof(receive_buffer), &receive_port);
-            if (receive_length > -1) {
+            if (receive_length > -1)
+            {
                 printf("received a %d byte message on port %d: ", receive_length, receive_port);
 
-                for (int i = 0; i < receive_length; i++) {
+                for (int i = 0; i < receive_length; i++)
+                {
                     printf("%02x", receive_buffer[i]);
                 }
                 printf("\n");

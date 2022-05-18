@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required (VERSION 3.16)
 
 # initialize pico_sdk from GIT
 # (note this can come from environment, CMake cache etc)
@@ -113,13 +113,15 @@ target_compile_definitions(pico_loramac_node INTERFACE -DACTIVE_REGION=LORAMAC_R
 add_library(pico_lorawan INTERFACE)
 
 target_sources(pico_lorawan INTERFACE
-    ${CMAKE_CURRENT_LIST_DIR}/src/lorawan.c
+    "${CMAKE_CURRENT_LIST_DIR}/src/lorawan.c"
 )
 
 target_include_directories(pico_lorawan INTERFACE
-    ${CMAKE_CURRENT_LIST_DIR}/src/include
+    "${CMAKE_CURRENT_LIST_DIR}/src/include"
 )
 
 target_link_libraries(pico_lorawan INTERFACE pico_loramac_node)
 
-add_subdirectory("engine/temperature_measurement")
+add_subdirectory(engine/temperature_measurement)
+add_subdirectory(./lib/pico-arduino-compat/libs/adafruit-sht4x-library)
+add_subdirectory(./lib/adafruit-sensor)
