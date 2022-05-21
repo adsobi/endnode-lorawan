@@ -14,17 +14,24 @@ Based on the Semtech's [LoRaWAN end-device stack implementation and example proj
 
 ### Pinout
 
-| Raspberry Pi Pico / RP2040 | Semtech SX1276 |
-| ----------------- | -------------- |
-| 3.3V | VCC |
-| GND | GND |
-| GPIO 18 | SCK |
-| GPIO 19 | MOSI |
-| GPIO 16 | MISO |
-| GPIO 7 | DIO0 / G0 |
-| GPIO 8 | NSS / CS |
-| GPIO 9 | RESET |
-| GPIO 10 | DIO1 / G1 |
+| Pico | RP20401 |SX1276 Module	| RFM95W Breakout
+| ------------------------------------------------
+| 3V3  |  —	 | VCC	| VIN
+| GND	 | GND | GND | GND
+| Pin 10 | GP7	| DIO0 | G0
+| Pin 11	| GP8	| NSS	| CS
+| Pin 12	| GP9 |	RESET	| RST
+| Pin 14	| GP10 | DIO1 | G1
+| Pin 21	| GP16 | (SPI0 RX)	| MISO | MISO
+| Pin 24	| GP18(SPI0 SCK)	| SCK	| SCK
+| Pin 25	| GP19 (SPI0 TX)	| MOSI	| MOSI
+
+| Pico | SHT40
+| ------------
+| 3V3 | VIN
+| GND | GND
+| SCL | Pin 6
+| SCL | Pin 7
 
 ## Building
 In main directory run command:

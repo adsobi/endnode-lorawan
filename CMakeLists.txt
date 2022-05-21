@@ -7,6 +7,7 @@ cmake_minimum_required (VERSION 3.16)
 # pico_sdk_import.cmake is a single file copied from this SDK
 # note: this must happen before project()
 include(pico_sdk_import.cmake)
+include(pico_extras_import.cmake)
 
 project(pico_lorawan)
 

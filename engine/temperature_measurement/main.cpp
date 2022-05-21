@@ -15,20 +15,28 @@
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
-
 #include "pico/stdlib.h"
+
+#include "pico/sleep.h"
+#include <stdint.h>
+#include <stdlib.h>
+#include "hardware/clocks.h"
+#include "hardware/rosc.h"
+#include "hardware/structs/scb.h"
 
 extern "C"
 {
-#include "pico/lorawan.h"
+    #include "pico/lorawan.h"
 }
+//#include "deep_sleep.h"
 
 #include "Adafruit_SHT4x.h"
 #include "tusb.h"
-
-// edit with LoRaWAN Node Region and OTAA settings
 #include "config.h"
-#define I2C_PORT i2c0
+
+
+#define RECEIVE_DELAY 2000
+#define SEND_DATA_DELAY 5000
 // pin configuration for SX1276 radio module
 const struct lorawan_sx1276_settings sx1276_settings = {
     .spi = {
@@ -52,27 +60,8 @@ const struct lorawan_otaa_settings otaa_settings = {
 int receive_length = 0;
 uint8_t receive_buffer[242];
 uint8_t receive_port = 0;
-static int addr = 0x44;
+
 Adafruit_SHT4x sht4 = Adafruit_SHT4x();
-
-// functions used in main
-void internal_temperature_init();
-float internal_temperature_get();
-
-// void temp_sensor_init(void) {
-//     sleep_ms(1000);
-//     uint8_t reg = 0x00;
-//     uint8_t chipID[1];
-//     i2c_write_blocking(I2C_PORT, addr, $reg, 1, true);
-//     i2c_read_blocking(I2C_PORT, addr, chipID, 1, true);
-
-//     if (chipID[0] != 0xA0) {
-//         while(1) {
-//             printf('ChipID not connected');
-//             sleep_ms(5000);
-//         }
-//     }
-// }
 
 void init_sht4x_sensor()
 {
@@ -130,6 +119,85 @@ void init_sht4x_sensor()
     }
 }
 
+static void sleep_callback(void) {
+    printf("RTC woke us up\n");
+    uart_default_tx_wait_blocking();
+    return;
+}
+
+/*
+*   Maximumum value of 'second_to_sleep_to' is 86399 what is equals 23h 59m 59s.
+*/
+static void rtc_sleep(uint32_t second_to_sleep_to)
+{
+    if (second_to_sleep_to >= 86400) second_to_sleep_to = 86399;
+
+    datetime_t t = {
+        .year  = 2022,
+        .month = 06,
+        .day   = 01,
+        .dotw  = 3,
+        .hour  = 00,
+        .min   = 00,
+        .sec   = 00
+    };
+
+    datetime_t t_alarm = {
+            .year  = 2022,
+            .month = 06,
+            .day   = 01,
+            .dotw  = 3,
+            .hour  = int(second_to_sleep_to / 3600),
+            .min   = int((second_to_sleep_to / 60) % 60),
+            .sec   = int(second_to_sleep_to % 60)
+    };
+
+    rtc_init();
+    rtc_set_datetime(&t);
+    sleep_goto_sleep_until(&t_alarm, &sleep_callback);
+}
+
+
+void recover_from_sleep(uint scb_orig, uint clock0_orig, uint clock1_orig){
+
+    //Re-enable ring Oscillator control
+    rosc_write(&rosc_hw->ctrl, ROSC_CTRL_ENABLE_BITS);
+
+    //reset procs back to default
+    scb_hw->scr = scb_orig;
+    clocks_hw->sleep_en0 = clock0_orig;
+    clocks_hw->sleep_en1 = clock1_orig;
+
+    //reset clocks
+    clocks_init();
+    stdio_init_all();
+
+    return;
+}
+
+void measure_freqs(void) {
+    uint f_pll_sys = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_PLL_SYS_CLKSRC_PRIMARY);
+    uint f_pll_usb = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_PLL_USB_CLKSRC_PRIMARY);
+    uint f_rosc = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_ROSC_CLKSRC);
+    uint f_clk_sys = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_SYS);
+    uint f_clk_peri = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_PERI);
+    uint f_clk_usb = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_USB);
+    uint f_clk_adc = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_ADC);
+    uint f_clk_rtc = frequency_count_khz(CLOCKS_FC0_SRC_VALUE_CLK_RTC);
+
+    printf("pll_sys  = %dkHz\n", f_pll_sys);
+    printf("pll_usb  = %dkHz\n", f_pll_usb);
+    printf("rosc     = %dkHz\n", f_rosc);
+    printf("clk_sys  = %dkHz\n", f_clk_sys);
+    printf("clk_peri = %dkHz\n", f_clk_peri);
+    printf("clk_usb  = %dkHz\n", f_clk_usb);
+    printf("clk_adc  = %dkHz\n", f_clk_adc);
+    printf("clk_rtc  = %dkHz\n", f_clk_rtc);
+
+    uart_default_tx_wait_blocking();
+    // Can't measure clk_ref / xosc as it is the ref
+}
+
 int main(void)
 {
     char devEui[17];
@@ -142,14 +210,13 @@ int main(void)
     }
 
     printf("Pico LoRaWAN - OTAA - Temperature + LED\n\n");
+    printf("Dev EUI: %c", lorawan_default_dev_eui(devEui));
 
     init_sht4x_sensor();
     sensors_event_t humidity, temp;
     // initialize the LED pin and internal temperature ADC
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-
-    //internal_temperature_init();
 
     // uncomment next line to enable debug
     lorawan_debug(true);
@@ -172,6 +239,12 @@ int main(void)
     // Start the join process and wait
     printf("Joining LoRaWAN network ...");
     lorawan_join();
+    gpio_put(PICO_DEFAULT_LED_PIN, true);
+
+    //save values for later
+    uint scb_orig = scb_hw->scr;
+    uint clock0_orig = clocks_hw->sleep_en0;
+    uint clock1_orig = clocks_hw->sleep_en1;
 
     while (!lorawan_is_joined())
     {
@@ -180,19 +253,39 @@ int main(void)
 
         sht4.getEvent(&humidity, &temp);
         printf("Temperature: %f degrees C\n", temp.temperature);
-        printf("Humidity: %f% rH", humidity.relative_humidity);
+        printf("Humidity: %f% rH\n", humidity.relative_humidity);;
+
+        printf("Go to sleep...\n");
+        uart_default_tx_wait_blocking();
+
+        sleep_run_from_xosc();
+        rtc_sleep(11);
+        measure_freqs();
+        printf("\n");
+        //reset processor and clocks back to defaults
+        recover_from_sleep(scb_orig, clock0_orig, clock1_orig);
+        //clocks should be restored
+        measure_freqs();
+
+        printf("Sleep from sleep_ms\n");
+        uart_default_tx_wait_blocking();
+        sleep_ms(2000);
+
     }
     printf(" joined successfully!\n");
 
     // loop forever
-    while (1)
+    while (true)
     {
-        // get the internal temperature
-        int8_t adc_temperature_byte = internal_temperature_get();
-
         sht4.getEvent(&humidity, &temp);
         printf("Temperature: %f degrees C\n", temp.temperature);
         printf("Humidity: %f% rH", humidity.relative_humidity);
+
+        // while(!best_effort_wfe_or_timeout(SEND_DATA_DELAY))
+        // {
+        //     //pass
+        // }
+
         // send the internal temperature as a (signed) byte in an unconfirmed uplink message
         if (lorawan_send_unconfirmed(&temp.temperature, sizeof(temp.temperature), 2) < 0)
         {
@@ -203,8 +296,8 @@ int main(void)
             printf("success!\n");
         }
 
-        // wait for up to 30 seconds for an event
-        if (lorawan_process_timeout_ms(30000) == 0)
+        // wait for up to 2 seconds for an event
+        if (lorawan_process_timeout_ms(RECEIVE_DELAY) == 0)
         {
             // check if a downlink message was received
             receive_length = lorawan_receive(receive_buffer, sizeof(receive_buffer), &receive_port);
@@ -219,36 +312,11 @@ int main(void)
                 printf("\n");
 
                 // the first byte of the received message controls the on board LED
-                gpio_put(PICO_DEFAULT_LED_PIN, receive_buffer[0]);
             }
         }
+
+        //TODO: add rtc sleep
     }
 
     return 0;
-}
-
-void internal_temperature_init()
-{
-    adc_init();
-    adc_set_temp_sensor_enabled(true);
-    adc_select_input(4);
-}
-
-float internal_temperature_get()
-{
-    const float v_ref = 3.3;
-
-    // select and read the ADC
-    adc_select_input(4);
-    uint16_t adc_raw = adc_read();
-
-    // convert the raw ADC value to a voltage
-    float adc_voltage = adc_raw * v_ref / 4095.0f;
-
-    // convert voltage to temperature, using the formula from
-    // section 4.9.4 in the RP2040 datasheet
-    //   https://datasheets.raspberrypi.org/rp2040/rp2040-datasheet.pdf
-    float adc_temperature = 27.0 - ((adc_voltage - 0.706) / 0.001721);
-
-    return adc_temperature;
 }

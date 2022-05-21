@@ -7,7 +7,7 @@ add_executable(pico_lorawan_temperature_measurement
 )
 
 SET(CMAKE_C_LINK_EXECUTABLE ${CMAKE_CXX_LINK_EXECUTABLE})
-target_link_libraries(pico_lorawan_temperature_measurement pico_lorawan hardware_adc hardware_i2c pac-adafruit-sht4x-library pac-adafruit-sensor)
+target_link_libraries(pico_lorawan_temperature_measurement pico_lorawan hardware_sleep hardware_adc hardware_i2c pac-adafruit-sht4x-library pac-adafruit-sensor)
 
 # enable usb output, disable uart output
 pico_enable_stdio_usb(pico_lorawan_temperature_measurement 1)
