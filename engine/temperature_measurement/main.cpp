@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <bits/stdc++.h>
 
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
@@ -37,6 +38,7 @@ extern "C"
 
 #define RECEIVE_DELAY 2000
 #define SEND_DATA_DELAY 5000
+#define SIZE_OF_MEASUREMENTS_BUFFER 10
 // pin configuration for SX1276 radio module
 const struct lorawan_sx1276_settings sx1276_settings = {
     .spi = {
@@ -62,6 +64,7 @@ uint8_t receive_buffer[242];
 uint8_t receive_port = 0;
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x();
+int iter_for_prediction = 0;
 
 void init_sht4x_sensor()
 {
@@ -119,10 +122,10 @@ void init_sht4x_sensor()
     }
 }
 
-static void sleep_callback(void) {
-    printf("RTC woke us up\n");
+static void sleep_callback() {
+    printf("RTC woke up\n");
     uart_default_tx_wait_blocking();
-    return;
+
 }
 
 /*
@@ -198,10 +201,57 @@ void measure_freqs(void) {
     // Can't measure clk_ref / xosc as it is the ref
 }
 
+bool custom_sort(double a, double b) /* this custom sort function is defined to
+                                     sort on basis of min absolute value or error*/
+{
+    double  a1=abs(a-0);
+    double  b1=abs(b-0);
+    return a1<b1;
+}
+
+static void update_params_for_prediction(
+    std::vector<double>& y,
+    std::pair<double, double>& params
+) {
+   /*Intialization Phase*/
+    double x[SIZE_OF_MEASUREMENTS_BUFFER];
+    for (int i = 0; i < SIZE_OF_MEASUREMENTS_BUFFER; i++) x[i] = i;
+    std::vector<double>error;
+    double err;
+    double alpha = 0.01;
+    params.first = 0.00;
+    params.second = 0.00;
+
+    //&params->last = 0;
+    /*Training Phase*/
+    for (int i = 0; i < 2000; i ++) {   // since there are 5 values and we want 4 epochs so run for loop for 20 times
+        int idx = i % 10;              //for accessing index after every epoch
+        double p = params.first + params.second * x[idx];  //calculating prediction
+        err = p - y[idx];              // calculating error
+        params.first = params.first - alpha * err;         // updating b0
+        params.second = params.second - alpha * err * x[idx];// updating b1
+        //printf("B0=%f B1=%f error=%f\n", b0, b1, err);// printing values after every updation
+        error.push_back(err);
+    }
+
+    y.clear();
+    iter_for_prediction = 0;
+    sort(error.begin(),error.end(),custom_sort);//sorting based on error values
+    printf("Final Values are: B0=%f B1=%f error=%f\n", params.first, params.second, error[0]);
+}
+
+double predict_temp_value(float& actual_temp, std::pair<double, double>& params)
+{
+    double pred = params.first + (params.second * (SIZE_OF_MEASUREMENTS_BUFFER + iter_for_prediction));
+    printf("Pedicted: %f\n", pred);
+    return pred;
+}
+
 int main(void)
 {
-    char devEui[17];
-
+    char dev_eui[17];
+    //std::vector<double> temp_measurements(SIZE_OF_MEASUREMENTS_VECTOR);
+    std::vector<double> temp_measurements;
     // initialize stdio and wait for USB CDC connect
     stdio_init_all();
     while (!tud_cdc_connected())
@@ -209,14 +259,14 @@ int main(void)
         tight_loop_contents();
     }
 
-    printf("Pico LoRaWAN - OTAA - Temperature + LED\n\n");
-    printf("Dev EUI: %c", lorawan_default_dev_eui(devEui));
+    // printf("Pico LoRaWAN - OTAA - Temperature + LED\n\n");
+    // printf("Dev EUI: %c\n", lorawan_default_dev_eui(dev_eui));
 
     init_sht4x_sensor();
     sensors_event_t humidity, temp;
     // initialize the LED pin and internal temperature ADC
-    gpio_init(PICO_DEFAULT_LED_PIN);
-    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    //gpio_init(PICO_DEFAULT_LED_PIN);
+    //gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 
     // uncomment next line to enable debug
     lorawan_debug(true);
@@ -239,37 +289,53 @@ int main(void)
     // Start the join process and wait
     printf("Joining LoRaWAN network ...");
     lorawan_join();
-    gpio_put(PICO_DEFAULT_LED_PIN, true);
+    //gpio_put(PICO_DEFAULT_LED_PIN, true);
 
     //save values for later
     uint scb_orig = scb_hw->scr;
     uint clock0_orig = clocks_hw->sleep_en0;
     uint clock1_orig = clocks_hw->sleep_en1;
 
+    double predicted_temp;
+    std::pair<double, double> params(0,0);
+    int iter = 0;
     while (!lorawan_is_joined())
     {
-        lorawan_process_timeout_ms(1000);
-        printf(".");
-
+        //TODO: ODKOMENTOWAĆ! lorawan_process_timeout_ms(1000);
+        //printf(".");
+        sleep_ms(2000);
         sht4.getEvent(&humidity, &temp);
         printf("Temperature: %f degrees C\n", temp.temperature);
         printf("Humidity: %f% rH\n", humidity.relative_humidity);;
 
-        printf("Go to sleep...\n");
-        uart_default_tx_wait_blocking();
+        // //printf("Size: %i", temp_measurements.s);
+        if (temp_measurements.size() == SIZE_OF_MEASUREMENTS_BUFFER) {
+            update_params_for_prediction(temp_measurements, params);
+        }
 
-        sleep_run_from_xosc();
-        rtc_sleep(11);
-        measure_freqs();
-        printf("\n");
-        //reset processor and clocks back to defaults
-        recover_from_sleep(scb_orig, clock0_orig, clock1_orig);
+        temp_measurements.push_back(temp.temperature);
+        iter_for_prediction++;
+
+        if (params.first != 0 && params.second != 0) {
+            predicted_temp = predict_temp_value(temp.temperature, params);
+        }
+
+        // printf("Go to sleep ...");
+        // uart_default_tx_wait_blocking();
+
+        // sleep_run_from_xosc();
+        // rtc_sleep(7);
+        // //measure_freqs();-
+        // //reset processor and clocks back to defaults
+        // recover_from_sleep(scb_orig, clock0_orig, clock1_orig);
         //clocks should be restored
-        measure_freqs();
+        //measure_freqs();
 
-        printf("Sleep from sleep_ms\n");
-        uart_default_tx_wait_blocking();
+        //printf("Sleep from sleep_ms\n");
+        //uart_default_tx_wait_blocking();
         sleep_ms(2000);
+        printf("Iter: %i\n", iter_for_prediction);
+        // uart_default_tx_wait_blocking();
 
     }
     printf(" joined successfully!\n");
