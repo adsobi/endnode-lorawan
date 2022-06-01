@@ -1,7 +1,7 @@
 /*!
  * \file      LmHandler.c
  *
- * \brief     Implements the LoRaMac layer handling. 
+ * \brief     Implements the LoRaMac layer handling.
  *            Provides the possibility to register applicative packages.
  *
  * \remark    Inspired by the examples provided on the en.i-cube_lrwan fork.
@@ -431,7 +431,11 @@ LmHandlerFlagStatus_t LmHandlerJoinStatus( void )
     }
 }
 
-LmHandlerErrorStatus_t LmHandlerSend( LmHandlerAppData_t *appData, LmHandlerMsgTypes_t isTxConfirmed )
+LmHandlerErrorStatus_t LmHandlerSend( LmHandlerAppData_t *appData, LmHandlerMsgTypes_t isTxConfirmed){
+    return LmHandlerSendSpecial(appData, isTxConfirmed, 199);
+}
+
+LmHandlerErrorStatus_t LmHandlerSendSpecial( LmHandlerAppData_t *appData, LmHandlerMsgTypes_t isTxConfirmed, uint8_t power_setting)
 {
     LoRaMacStatus_t status;
     McpsReq_t mcpsReq;
@@ -464,7 +468,8 @@ LmHandlerErrorStatus_t LmHandlerSend( LmHandlerAppData_t *appData, LmHandlerMsgT
     TxParams.AppData = *appData;
     TxParams.Datarate = LmHandlerParams->TxDatarate;
 
-    status = LoRaMacMcpsRequest( &mcpsReq );
+    status = LoRaMacMcpsRequest( &mcpsReq, power_setting);
+
     LmHandlerCallbacks->OnMacMcpsRequest( status, &mcpsReq, mcpsReq.ReqReturn.DutyCycleWaitTime );
     DutyCycleWaitTime = mcpsReq.ReqReturn.DutyCycleWaitTime;
 

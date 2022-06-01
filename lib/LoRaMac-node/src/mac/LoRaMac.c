@@ -404,7 +404,7 @@ static void ProcessMacCommands( uint8_t* payload, uint8_t macIndex, uint8_t comm
  * \param [IN] fBufferSize MAC data buffer size
  * \retval status          Status of the operation.
  */
-LoRaMacStatus_t Send( LoRaMacHeader_t* macHdr, uint8_t fPort, void* fBuffer, uint16_t fBufferSize );
+LoRaMacStatus_t Send( LoRaMacHeader_t* macHdr, uint8_t fPort, void* fBuffer, uint16_t fBufferSize,uint8_t power_setting);
 
 /*!
  * \brief LoRaMAC layer send join/rejoin request
@@ -2301,8 +2301,11 @@ static void ProcessMacCommands( uint8_t *payload, uint8_t macIndex, uint8_t comm
     }
 }
 
-LoRaMacStatus_t Send( LoRaMacHeader_t* macHdr, uint8_t fPort, void* fBuffer, uint16_t fBufferSize )
+LoRaMacStatus_t Send( LoRaMacHeader_t* macHdr, uint8_t fPort, void* fBuffer, uint16_t fBufferSize, uint8_t power_setting)
 {
+    if (power_setting != 199){
+    Nvm.MacGroup1.ChannelsTxPower = power_setting;
+    }
     LoRaMacFrameCtrl_t fCtrl;
     LoRaMacStatus_t status = LORAMAC_STATUS_PARAMETER_INVALID;
     int8_t datarate = Nvm.MacGroup1.ChannelsDatarate;
@@ -4679,7 +4682,7 @@ LoRaMacStatus_t LoRaMacMlmeRequest( MlmeReq_t* mlmeRequest )
     return status;
 }
 
-LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t* mcpsRequest )
+LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t* mcpsRequest, uint8_t power_setting)
 {
     GetPhyParams_t getPhy;
     PhyParam_t phyParam;
@@ -4790,7 +4793,7 @@ LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t* mcpsRequest )
             }
         }
 
-        status = Send( &macHdr, fPort, fBuffer, fBufferSize );
+        status = Send( &macHdr, fPort, fBuffer, fBufferSize, power_setting );
         if( status == LORAMAC_STATUS_OK )
         {
             MacCtx.McpsConfirm.McpsRequest = request.Type;

@@ -1,7 +1,7 @@
 /*!
  * \file      LmHandler.h
  *
- * \brief     Implements the LoRaMac layer handling. 
+ * \brief     Implements the LoRaMac layer handling.
  *            Provides the possibility to register applicative packages.
  *
  * \remark    Inspired by the examples provided on the en.i-cube_lrwan fork.
@@ -232,13 +232,13 @@ LmHandlerErrorStatus_t LmHandlerInit( LmHandlerCallbacks_t *callbacks,
 
 /*!
  * Indicates if the LoRaMacHandler is busy
- * 
+ *
  * \retval status [true] Busy, [false] free
  */
 bool LmHandlerIsBusy( void );
 
 /*!
- * Processes the LoRaMac and Radio events. 
+ * Processes the LoRaMac and Radio events.
  * When no pendig operation asks to go in low power mode.
  *
  * \remark This function must be called in the main loop.
@@ -261,7 +261,8 @@ TimerTime_t LmHandlerGetDutyCycleWaitTime( void );
  * \retval status Returns \ref LORAMAC_HANDLER_SUCCESS if request has been
  *                processed else \ref LORAMAC_HANDLER_ERROR
  */
-LmHandlerErrorStatus_t LmHandlerSend( LmHandlerAppData_t *appData, LmHandlerMsgTypes_t isTxConfirmed );
+LmHandlerErrorStatus_t LmHandlerSendSpecial( LmHandlerAppData_t *appData, LmHandlerMsgTypes_t isTxConfirmed, uint8_t power_setting);
+LmHandlerErrorStatus_t LmHandlerSend( LmHandlerAppData_t *appData, LmHandlerMsgTypes_t isTxConfirmed);
 
 /*!
  * Join a LoRa Network in classA

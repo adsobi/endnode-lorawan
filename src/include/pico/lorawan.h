@@ -2,7 +2,7 @@
  * Copyright (c) 2021 Arm Limited and Contributors. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
- * 
+ *
  */
 
 #ifndef _PICO_LORAWAN_H_
@@ -54,7 +54,7 @@ int lorawan_process();
 
 int lorawan_process_timeout_ms(uint32_t timeout_ms);
 
-int lorawan_send_unconfirmed(const void* data, uint8_t data_len, uint8_t app_port);
+int lorawan_send_unconfirmed(const void* data, uint8_t data_len, uint8_t app_port, uint8_t power_setting);
 
 int lorawan_receive(void* data, uint8_t data_len, uint8_t* app_port);
 

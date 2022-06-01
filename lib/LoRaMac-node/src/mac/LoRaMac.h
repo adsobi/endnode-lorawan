@@ -2728,7 +2728,7 @@ LoRaMacStatus_t LoRaMacMlmeRequest( MlmeReq_t* mlmeRequest );
  *          \ref LORAMAC_STATUS_NO_NETWORK_JOINED,
  *          \ref LORAMAC_STATUS_LENGTH_ERROR,
  */
-LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t* mcpsRequest );
+LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t* mcpsRequest,uint8_t power_setting );
 
 /*!
  * \brief   LoRaMAC deinitialization

@@ -262,9 +262,15 @@ double predict_temp_value(float& actual_temp, std::pair<double, double>& params)
     return pred;
 }
 
-static void xd(){
-    printf("xd\n");
-    uart_default_tx_wait_blocking();
+int adjust_antenna_power(int dbi)
+{
+    if (dbi >= 100) return TX_POWER_0;
+    else if (dbi >= 85 && dbi < 100) TX_POWER_1;
+    else if (dbi >= 70 && dbi < 85) TX_POWER_2;
+    else if (dbi >= 55 && dbi < 70) TX_POWER_3;
+    else if (dbi >= 40 && dbi < 55) TX_POWER_4;
+    else if (dbi >= 20 && dbi < 40) TX_POWER_5;
+    else if (dbi < 20) TX_POWER_6;
 }
 
 int main(void)
@@ -382,7 +388,7 @@ int main(void)
         }
 
         // send the internal temperature as a (signed) byte in an unconfirmed uplink message
-        if (lorawan_send_unconfirmed(&temp.temperature, sizeof(temp.temperature), 2) < 0)
+        if (lorawan_send_unconfirmed(&temp.temperature, sizeof(temp.temperature), 2, TX_POWER_0) < 0)
         {
             printf("failed!!!\n");
         }

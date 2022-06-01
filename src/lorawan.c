@@ -1,7 +1,7 @@
 /*!
  * \file      lorawan.c
  *
- * \brief     Implements the LoRaMac layer handling. 
+ * \brief     Implements the LoRaMac layer handling.
  *            Provides the possibility to register applicative packages.
  *
  * \remark    This file is based on
@@ -55,7 +55,7 @@
 /*!
  * Default datarate
  *
- * \remark Please note that LORAWAN_DEFAULT_DATARATE is used only when ADR is disabled 
+ * \remark Please note that LORAWAN_DEFAULT_DATARATE is used only when ADR is disabled
  */
 #define LORAWAN_DEFAULT_DATARATE                    DR_0
 
@@ -157,7 +157,7 @@ static LmhpComplianceParams_t LmhpComplianceParams =
 
 /*!
  * Indicates if LoRaMacProcess call is pending.
- * 
+ *
  * \warning If variable is equal to 0 then the MCU can be set in low power mode
  */
 static volatile uint8_t IsMacProcessPending = 0;
@@ -207,7 +207,7 @@ static int lorawan_init(const struct lorawan_sx1276_settings* sx1276_settings, L
         (SpiId_t)((sx1276_settings->spi.inst == spi0) ? 0 : 1),
         sx1276_settings->spi.mosi /*MOSI*/,
         sx1276_settings->spi.miso /*MISO*/,
-        sx1276_settings->spi.sck /*SCK*/, 
+        sx1276_settings->spi.sck /*SCK*/,
         NC
     );
 
@@ -296,7 +296,7 @@ int lorawan_process_timeout_ms(uint32_t timeout_ms)
     absolute_time_t timeout_time = make_timeout_time_ms(timeout_ms);
 
     bool joined = lorawan_is_joined();
-    
+
     do {
         lorawan_process();
 
@@ -306,11 +306,11 @@ int lorawan_process_timeout_ms(uint32_t timeout_ms)
             return 0;
         }
     } while (!best_effort_wfe_or_timeout(timeout_time));
-    
+
     return 1; // timed out
 }
 
-int lorawan_send_unconfirmed(const void* data, uint8_t data_len, uint8_t app_port)
+int lorawan_send_unconfirmed(const void* data, uint8_t data_len, uint8_t app_port, uint8_t power_setting)
 {
     LmHandlerAppData_t appData;
 
@@ -318,7 +318,7 @@ int lorawan_send_unconfirmed(const void* data, uint8_t data_len, uint8_t app_por
     appData.BufferSize = data_len;
     appData.Buffer = (uint8_t*)data;
 
-    if (LmHandlerSend(&appData, LORAMAC_HANDLER_UNCONFIRMED_MSG) != LORAMAC_HANDLER_SUCCESS) {
+    if (LmHandlerSendSpecial(&appData, LORAMAC_HANDLER_UNCONFIRMED_MSG, power_setting) != LORAMAC_HANDLER_SUCCESS) {
         return -1;
     }
 
@@ -532,7 +532,7 @@ static void OnNetworkParametersChange( CommissioningParams_t* params )
         mibReq.Type = MIB_CHANNELS_MASK;
         mibReq.Param.ChannelsMask = channelMask;
         LoRaMacMibSetRequestConfirm( &mibReq );
-        
+
         mibReq.Type = MIB_CHANNELS_DEFAULT_MASK;
         mibReq.Param.ChannelsDefaultMask = channelMask;
         LoRaMacMibSetRequestConfirm( &mibReq );
