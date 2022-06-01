@@ -9,12 +9,15 @@ cmake_minimum_required (VERSION 3.16)
 include(pico_sdk_import.cmake)
 include(pico_extras_import.cmake)
 
-project(pico_lorawan)
+include("${CMAKE_SOURCE_DIR}/lib/rapidjson/build/RapidJSONConfig.cmake")
+
+project(pico_lorawan LANGUAGES C CXX)
 
 # initialize the Pico SDK
 pico_sdk_init()
 
 set(LORAMAC_NODE_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/LoRaMac-node)
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 
 add_library(pico_loramac_node INTERFACE)
 
@@ -120,9 +123,10 @@ target_sources(pico_lorawan INTERFACE
 target_include_directories(pico_lorawan INTERFACE
     "${CMAKE_CURRENT_LIST_DIR}/src/include"
 )
-
 target_link_libraries(pico_lorawan INTERFACE pico_loramac_node)
 
 add_subdirectory(engine/temperature_measurement)
 add_subdirectory(./lib/pico-arduino-compat/libs/adafruit-sht4x-library)
 add_subdirectory(./lib/adafruit-sensor)
+add_subdirectory(./lib/rapidjson)
+
