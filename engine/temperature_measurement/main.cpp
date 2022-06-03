@@ -1,53 +1,33 @@
-/*
- * Copyright (c) 2021 Arm Limited and Contributors. All rights reserved.
- *
- * SPDX-License-Identifier: BSD-3-Clause
- *
- * This example uses OTAA to join the LoRaWAN network and then sends the
- * internal temperature sensors value up as an uplink message periodically
- * and the first byte of any uplink messages received controls the boards
- * built-in LED.
- */
-
 #include <stdio.h>
 #include <string.h>
 #include <bits/stdc++.h>
-
+#include <stdint.h>
+#include <stdlib.h>
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
-
 #include "pico/sleep.h"
-#include <stdint.h>
-#include <stdlib.h>
 #include "hardware/clocks.h"
 #include "hardware/rosc.h"
 #include "hardware/structs/scb.h"
-
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-
-#define MINREQ      0xFFF   // arbitrary minimum
-
+#include "Adafruit_SHT4x.h"
+#include "tusb.h"
+#include "config.h"
 extern "C"
 {
     #include "pico/lorawan.h"
 }
-//#include "deep_sleep.h"
-
-#include "Adafruit_SHT4x.h"
-#include "tusb.h"
-#include "config.h"
-
 
 #define RECEIVE_DELAY 2000
 #define SEND_DATA_DELAY 5000
 #define SIZE_OF_MEASUREMENTS_BUFFER 10
+#define MEASUREMENT_CORRECTNESS 0.02
+#define NUMBER_OF_PREDICTED_MEASUREMENT 2
+
 // pin configuration for SX1276 radio module
 const struct lorawan_sx1276_settings sx1276_settings = {
     .spi = {
@@ -67,11 +47,6 @@ const struct lorawan_otaa_settings otaa_settings = {
     .app_key = LORAWAN_APP_KEY,
     .channel_mask = LORAWAN_CHANNEL_MASK};
 
-// variables for receiving data
-int receive_length = 0;
-uint8_t receive_buffer[242];
-uint8_t receive_port = 0;
-
 Adafruit_SHT4x sht4 = Adafruit_SHT4x();
 int iter_for_prediction = 0;
 
@@ -86,8 +61,8 @@ void init_sht4x_sensor()
     if (!sht4.begin())
     {
         printf("Couldn't find SHT4x");
-        while (1)
-            delay(1);
+        while (true)
+            delay(true);
     }
     printf("Found SHT4x sensor: ");
 
@@ -135,7 +110,7 @@ void init_sht4x_sensor()
         break;
     }
 }
-
+// ----------------------------- SLEEP - START ---------------------------------
 /*
 *   Maximumum value of 'second_to_sleep_to' is 86399 what is equals 23h 59m 59s.
 */
@@ -216,7 +191,9 @@ void measure_freqs(void) {
     uart_default_tx_wait_blocking();
     // Can't measure clk_ref / xosc as it is the ref
 }
+// ------------------------------ SLEEP - END ----------------------------------
 
+// ---------------------------- PREDICTION - START -----------------------------
 bool custom_sort(double a, double b) {
     double  a1=abs(a-0);
     double  b1=abs(b-0);
@@ -256,40 +233,50 @@ static void update_params_for_prediction(
 
 double predict_temp_value(float& actual_temp, std::pair<double, double>& params)
 {
-    double pred = params.first + (params.second * (SIZE_OF_MEASUREMENTS_BUFFER + iter_for_prediction));
-    printf("Pedicted: %f\n", pred);
+    double predicted_value = params.first + (params.second * (SIZE_OF_MEASUREMENTS_BUFFER + iter_for_prediction));
+    printf("Pedicted: %f\n", predicted_value);
     uart_default_tx_wait_blocking();
-    return pred;
+    return predicted_value;
 }
 
-int adjust_antenna_power(int dbi)
+// ---------------------------- PREDICTION - END -------------------------------
+
+int adjust_antenna_power(int rssi)
 {
-    if (dbi >= 100) return TX_POWER_0;
-    else if (dbi >= 85 && dbi < 100) TX_POWER_1;
-    else if (dbi >= 70 && dbi < 85) TX_POWER_2;
-    else if (dbi >= 55 && dbi < 70) TX_POWER_3;
-    else if (dbi >= 40 && dbi < 55) TX_POWER_4;
-    else if (dbi >= 20 && dbi < 40) TX_POWER_5;
-    else if (dbi < 20) TX_POWER_6;
+    if (rssi <= -100) return TX_POWER_0;
+    else if (rssi <= -85 && rssi > -100) TX_POWER_1;
+    else if (rssi <= -70 && rssi > -85) TX_POWER_2;
+    else if (rssi <= -55 && rssi > -70) TX_POWER_3;
+    else if (rssi <= -40 && rssi > -55) TX_POWER_4;
+    else if (rssi <= -20 && rssi > -40) TX_POWER_5;
+    else if (rssi > -20) TX_POWER_6;
 }
 
 int main(void)
 {
-    char dev_eui[17];
     std::vector<double> temp_measurements;
-    // initialize stdio and wait for USB CDC connect
+    float predicted_temp = 0.00;
+    float previous_predicted_temp;
+    std::pair<double, double> params(0,0);
+    int antenna_gain = TX_POWER_0;
+
+    // variables for receiving data
+    int receive_length = 0;
+    uint8_t receive_buffer[242];
+    uint8_t receive_port = 0;
+
+    // Initialize stdio and wait for USB CDC connect
     stdio_init_all();
     while (!tud_cdc_connected())
     {
         tight_loop_contents();
     }
 
-    printf("Pico LoRaWAN - OTAA - Temperature + LED\n\n");
-    printf("Dev EUI: %c\n", lorawan_default_dev_eui(dev_eui));
-
+    // Initialize SHT40 sensor
     init_sht4x_sensor();
     sensors_event_t humidity, temp;
-    // initialize the LED pin and internal temperature ADC
+
+    // Initialize the LED pin and internal temperature ADC
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
     gpio_put(PICO_DEFAULT_LED_PIN, false);
@@ -297,12 +284,12 @@ int main(void)
     //uncomment next line to enable debug
     lorawan_debug(true);
 
-    //initialize the LoRaWAN stack
+    // Initialize the LoRaWAN stack
     printf("Initilizating LoRaWAN ... ");
     if (lorawan_init_otaa(&sx1276_settings, LORAWAN_REGION, &otaa_settings) < 0)
     {
         printf("failed!!!\n");
-        while (1)
+        while (true)
         {
             tight_loop_contents();
         }
@@ -316,23 +303,24 @@ int main(void)
     printf("Joining LoRaWAN network ...");
     lorawan_join();
 
-    double predicted_temp;
-    std::pair<double, double> params(0,0);
-
-
     while (!lorawan_is_joined())
+    {
+        lorawan_process_timeout_ms(1000);
+    }
+    printf(" joined successfully!\n");
+
+    while (true)
     {
         rapidjson::StringBuffer message;
         rapidjson::Writer<rapidjson::StringBuffer> writer(message);
 
-        lorawan_process_timeout_ms(1000);
-        //printf(".");
-        //sleep_ms(2000);
+        // Read values from sensor
         sht4.getEvent(&humidity, &temp);
         printf("Temperature: %f degrees C\n", temp.temperature);
         printf("Humidity: %f% rH\n", humidity.relative_humidity);;
         uart_default_tx_wait_blocking();
 
+        // Update b0 and b1 params if it is needed
         if (temp_measurements.size() == SIZE_OF_MEASUREMENTS_BUFFER) {
             update_params_for_prediction(temp_measurements, params);
         }
@@ -345,55 +333,25 @@ int main(void)
         writer.Double(temp.temperature);
         writer.Key("1");
 
+        // If 10 values are in buffer predict temperature
         if (params.first != 0 && params.second != 0) {
+            previous_predicted_temp = predicted_temp;
             predicted_temp = predict_temp_value(temp.temperature, params);
-
             writer.Double(predicted_temp);
         } else {
             writer.Bool(false);
         }
         writer.EndObject();
-        printf("%s", message.GetString());
-
-        //rtc_sleep(5);
-        //measure_freqs();-
-        //reset processor and clocks back to defaults
-
-        //printf("Sleep from sleep_ms\n");
-        //uart_default_tx_wait_blocking();
-        //sleep_ms(2000);
-        // printf("Iter: %i\n", iter_for_prediction);
-        // uart_default_tx_wait_blocking();
-
-    }
-    printf(" joined successfully!\n");
-
-    // loop forever
-    while (true)
-    {
-        sht4.getEvent(&humidity, &temp);
-        printf("Temperature: %f degrees C\n", temp.temperature);
-        printf("Humidity: %f% rH\n", humidity.relative_humidity);;
-        uart_default_tx_wait_blocking();
-
-        if (temp_measurements.size() == SIZE_OF_MEASUREMENTS_BUFFER) {
-            update_params_for_prediction(temp_measurements, params);
-        }
-
-        temp_measurements.push_back(temp.temperature);
-        iter_for_prediction++;
-
-        if (params.first != 0 && params.second != 0) {
-            predicted_temp = predict_temp_value(temp.temperature, params);
-        }
+        printf("%s\n", message.GetString());
 
         // send the internal temperature as a (signed) byte in an unconfirmed uplink message
-        if (lorawan_send_unconfirmed(&temp.temperature, sizeof(temp.temperature), 2, TX_POWER_0) < 0)
+        if (lorawan_send_unconfirmed(message.GetString(), sizeof(message.GetString()), 2, antenna_gain) < 0)
         {
             printf("failed!!!\n");
         }
         else
         {
+            gpio_put(PICO_DEFAULT_LED_PIN, true);
             printf("success!\n");
         }
 
@@ -412,11 +370,18 @@ int main(void)
                 }
                 printf("\n");
 
-                // the first byte of the received message controls the on board LED
+                //TODO: Change antenna gain
+                //antenna_gain = adjust_antenna_power(rssi);
             }
         }
 
-        //TODO: add rtc sleep
+        gpio_put(PICO_DEFAULT_LED_PIN, false);
+        //TODO: Check correctness of prediction based on previous measurement
+        if (abs(temp.temperature - previous_predicted_temp) < (temp.temperature * MEASUREMENT_CORRECTNESS)) {
+            sleep_ms(SEND_DATA_DELAY * NUMBER_OF_PREDICTED_MEASUREMENT);
+        } else {
+            sleep_ms(SEND_DATA_DELAY);
+        }
     }
 
     return 0;
