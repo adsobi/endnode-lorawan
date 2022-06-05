@@ -26,7 +26,7 @@ extern "C"
 #define SEND_DATA_DELAY 5000
 #define SIZE_OF_MEASUREMENTS_BUFFER 10
 #define MEASUREMENT_CORRECTNESS 0.02
-#define NUMBER_OF_PREDICTED_MEASUREMENT 2
+#define NUMBER_OF_PREDICTED_MEASUREMENTS 2
 
 // pin configuration for SX1276 radio module
 const struct lorawan_sx1276_settings sx1276_settings = {
@@ -224,7 +224,7 @@ static void update_params_for_prediction(
         error.push_back(err);
     }
 
-    y.clear();
+    y.erase(y.begin());
     iter_for_prediction = 0;
     sort(error.begin(),error.end(),custom_sort);//sorting based on error values
     printf("Final Values are: B0=%f B1=%f error=%f\n", params.first, params.second, error[0]);
@@ -255,10 +255,12 @@ int adjust_antenna_power(int rssi)
 int main(void)
 {
     std::vector<double> temp_measurements;
-    float predicted_temp = 0.00;
-    float previous_predicted_temp;
+    // SHT40 sensor provides measurements between -40 C to +125 C
+    float predicted_temp = -150.00;
+    float previous_predicted_temp = -150.00;
     std::pair<double, double> params(0,0);
     int antenna_gain = TX_POWER_0;
+    int iter_for_buffer = 0;
 
     // variables for receiving data
     int receive_length = 0;
@@ -320,68 +322,83 @@ int main(void)
         printf("Humidity: %f% rH\n", humidity.relative_humidity);;
         uart_default_tx_wait_blocking();
 
-        // Update b0 and b1 params if it is needed
-        if (temp_measurements.size() == SIZE_OF_MEASUREMENTS_BUFFER) {
+        // Update b0 and b1 params if buffer is filled and prediction is not correct
+        if (
+            temp_measurements.size() == SIZE_OF_MEASUREMENTS_BUFFER &&
+            abs(temp.temperature - previous_predicted_temp) > (temp.temperature * MEASUREMENT_CORRECTNESS)
+        ){
             update_params_for_prediction(temp_measurements, params);
+            iter_for_prediction = 0;
         }
-
-        temp_measurements.push_back(temp.temperature);
-        iter_for_prediction++;
 
         writer.StartObject();
+        writer.Key("delay");
+        writer.Int64(SEND_DATA_DELAY);
         writer.Key("0");
         writer.Double(temp.temperature);
-        writer.Key("1");
 
-        // If 10 values are in buffer predict temperature
+        // If 10 values are in buffer start prediction of temperature
         if (params.first != 0 && params.second != 0) {
+            //TODO: make prediction of many values
             previous_predicted_temp = predicted_temp;
             predicted_temp = predict_temp_value(temp.temperature, params);
+            writer.Key("1");
             writer.Double(predicted_temp);
-        } else {
-            writer.Bool(false);
         }
+
         writer.EndObject();
         printf("%s\n", message.GetString());
 
-        // send the internal temperature as a (signed) byte in an unconfirmed uplink message
-        if (lorawan_send_unconfirmed(message.GetString(), sizeof(message.GetString()), 2, antenna_gain) < 0)
+        if (
+            temp_measurements.size() < SIZE_OF_MEASUREMENTS_BUFFER ||
+            !(bool)(iter_for_prediction % NUMBER_OF_PREDICTED_MEASUREMENTS)
+        )
         {
-            printf("failed!!!\n");
-        }
-        else
-        {
-            gpio_put(PICO_DEFAULT_LED_PIN, true);
-            printf("success!\n");
-        }
-
-        // wait for up to 2 seconds for an event
-        if (lorawan_process_timeout_ms(RECEIVE_DELAY) == 0)
-        {
-            // check if a downlink message was received
-            receive_length = lorawan_receive(receive_buffer, sizeof(receive_buffer), &receive_port);
-            if (receive_length > -1)
+            // send the internal temperature as a (signed) byte in an unconfirmed uplink message
+            if (lorawan_send_unconfirmed(message.GetString(), sizeof(message.GetString()), 2, antenna_gain) < 0)
             {
-                printf("received a %d byte message on port %d: ", receive_length, receive_port);
+                printf("failed!!!\n");
+            }
+            else
+            {
+                gpio_put(PICO_DEFAULT_LED_PIN, true);
+                printf("success!\n");
+            }
 
-                for (int i = 0; i < receive_length; i++)
+            // wait for up to 2 seconds for an event
+            if (lorawan_process_timeout_ms(RECEIVE_DELAY) == 0)
+            {
+                // check if a downlink message was received
+                receive_length = lorawan_receive(receive_buffer, sizeof(receive_buffer), &receive_port);
+                if (receive_length > -1)
                 {
-                    printf("%02x", receive_buffer[i]);
-                }
-                printf("\n");
+                    printf("received a %d byte message on port %d: ", receive_length, receive_port);
 
-                //TODO: Change antenna gain
-                //antenna_gain = adjust_antenna_power(rssi);
+                    for (int i = 0; i < receive_length; i++)
+                    {
+                        printf("%02x", receive_buffer[i]);
+                    }
+                    printf("\n");
+
+                    //TODO: Change antenna gain
+                    //antenna_gain = adjust_antenna_power(rssi);
+                }
             }
         }
 
+        iter_for_prediction++;
+        temp_measurements.push_back(temp.temperature);
+
         gpio_put(PICO_DEFAULT_LED_PIN, false);
-        //TODO: Check correctness of prediction based on previous measurement
-        if (abs(temp.temperature - previous_predicted_temp) < (temp.temperature * MEASUREMENT_CORRECTNESS)) {
-            sleep_ms(SEND_DATA_DELAY * NUMBER_OF_PREDICTED_MEASUREMENT);
-        } else {
-            sleep_ms(SEND_DATA_DELAY);
-        }
+        sleep_ms(SEND_DATA_DELAY);
+
+        // if (abs(temp.temperature - previous_predicted_temp) < (temp.temperature * MEASUREMENT_CORRECTNESS)) {
+        //     sleep_ms(SEND_DATA_DELAY * NUMBER_OF_PREDICTED_MEASUREMENTS);
+        //     iter_for_prediction += NUMBER_OF_PREDICTED_MEASUREMENTS;
+        // } else {
+        //     sleep_ms(SEND_DATA_DELAY);
+        //     iter_for_prediction ++;
+        // }
     }
 
     return 0;
