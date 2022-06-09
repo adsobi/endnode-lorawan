@@ -16,10 +16,11 @@
 #include "rapidjson/stringbuffer.h"
 #include "Adafruit_SHT4x.h"
 #include "tusb.h"
-#include "config.h"
+
 extern "C"
 {
     #include "pico/lorawan.h"
+    #include "config.h"
 }
 
 #define RECEIVE_DELAY 2000
@@ -220,7 +221,7 @@ static void update_params_for_prediction(
         err = p - y[idx];              // calculating error
         params.first = params.first - alpha * err;         // updating b0
         params.second = params.second - alpha * err * x[idx];// updating b1
-        printf("B0=%f B1=%f error=%f\n", params.first, params.second, err);// printing values after every updation
+        //printf("B0=%f B1=%f error=%f\n", params.first, params.second, err);// printing values after every updation
         error.push_back(err);
     }
 
@@ -307,7 +308,8 @@ int main(void)
 
     while (!lorawan_is_joined())
     {
-        lorawan_process_timeout_ms(1000);
+        lorawan_process();
+        //lorawan_process_timeout_ms(1000);
     }
     printf(" joined successfully!\n");
 
@@ -355,7 +357,7 @@ int main(void)
         )
         {
             // send the internal temperature as a (signed) byte in an unconfirmed uplink message
-            if (lorawan_send_unconfirmed(message.GetString(), sizeof(message.GetString()), 2, antenna_gain) < 0)
+            if (lorawan_send_unconfirmed(message.GetString(), strlen(message.GetString()), 2, antenna_gain) < 0)
             {
                 printf("failed!!!\n");
             }
