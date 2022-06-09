@@ -406,6 +406,11 @@ void LmHandlerJoin( void )
     LmHandlerJoinRequest( CommissioningParams.IsOtaaActivation );
 }
 
+int LmHandlerRxRssi( void)
+{
+    return RxParams.Rssi;
+}
+
 LmHandlerFlagStatus_t LmHandlerJoinStatus( void )
 {
     MibRequestConfirm_t mibReq;

@@ -272,6 +272,12 @@ LmHandlerErrorStatus_t LmHandlerSend( LmHandlerAppData_t *appData, LmHandlerMsgT
 void LmHandlerJoin( void );
 
 /*!
+ * Return Rx Rssi
+ *
+ */
+int LmHandlerRxRssi( void );
+
+/*!
  * Check whether the Device is joined to the network
  *
  * \param [IN] none

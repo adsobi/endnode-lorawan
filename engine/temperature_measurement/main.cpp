@@ -28,6 +28,7 @@ extern "C"
 #define SIZE_OF_MEASUREMENTS_BUFFER 10
 #define MEASUREMENT_CORRECTNESS 0.02
 #define NUMBER_OF_PREDICTED_MEASUREMENTS 2
+#define LORAWAN_APP_DATA_BUFFER_MAX_SIZE            242
 
 // pin configuration for SX1276 radio module
 const struct lorawan_sx1276_settings sx1276_settings = {
@@ -380,10 +381,9 @@ int main(void)
                     {
                         printf("%02x", receive_buffer[i]);
                     }
-                    printf("\n");
 
-                    //TODO: Change antenna gain
-                    //antenna_gain = adjust_antenna_power(rssi);
+                    printf("\nRX RSSI: %i \n", lorawan_rx_rssi());
+                    antenna_gain = adjust_antenna_power(lorawan_rx_rssi());
                 }
             }
         }

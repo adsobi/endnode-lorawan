@@ -48,6 +48,8 @@ int lorawan_init_otaa(const struct lorawan_sx1276_settings* sx1276_settings, LoR
 
 int lorawan_join();
 
+int lorawan_rx_rssi();
+
 int lorawan_is_joined();
 
 int lorawan_process();

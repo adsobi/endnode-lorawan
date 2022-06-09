@@ -263,6 +263,11 @@ int lorawan_join()
     return 0;
 }
 
+int lorawan_rx_rssi()
+{
+    return LmHandlerRxRssi();
+}
+
 int lorawan_is_joined()
 {
     return (LmHandlerJoinStatus() == LORAMAC_HANDLER_SET);
