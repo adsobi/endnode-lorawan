@@ -23,12 +23,13 @@ extern "C"
     #include "config.h"
 }
 
-#define RECEIVE_DELAY 2000
-#define SEND_DATA_DELAY 5000
-#define SIZE_OF_MEASUREMENTS_BUFFER 10
-#define MEASUREMENT_CORRECTNESS 0.02
-#define NUMBER_OF_PREDICTED_MEASUREMENTS 2
-#define LORAWAN_APP_DATA_BUFFER_MAX_SIZE            242
+#define RECEIVE_DELAY                           2000
+#define SEND_DATA_DELAY                         5000
+#define SIZE_OF_MEASUREMENTS_BUFFER             10
+#define MEASUREMENT_CORRECTNESS                 0.02
+#define NUMBER_OF_PREDICTED_MEASUREMENTS        2
+#define LORAWAN_APP_DATA_BUFFER_MAX_SIZE        242
+#define ANTENNA_ITER_THRESHOLD                  20
 
 // pin configuration for SX1276 radio module
 const struct lorawan_sx1276_settings sx1276_settings = {
@@ -262,11 +263,11 @@ int main(void)
     float previous_predicted_temp = -150.00;
     std::pair<double, double> params(0,0);
     int antenna_gain = TX_POWER_0;
-    int iter_for_buffer = 0;
+    int iter_for_antenna_gain = 0;
 
     // variables for receiving data
     int receive_length = 0;
-    uint8_t receive_buffer[242];
+    uint8_t receive_buffer[LORAWAN_APP_DATA_BUFFER_MAX_SIZE];
     uint8_t receive_port = 0;
 
     // Initialize stdio and wait for USB CDC connect
@@ -364,6 +365,13 @@ int main(void)
             }
             else
             {
+                if (iter_for_antenna_gain == ANTENNA_ITER_THRESHOLD)
+                {
+                    antenna_gain = TX_POWER_0;
+                    iter_for_antenna_gain = 0;
+                } else {
+                    iter_for_antenna_gain++;
+                }
                 gpio_put(PICO_DEFAULT_LED_PIN, true);
                 printf("success!\n");
             }
@@ -393,14 +401,6 @@ int main(void)
 
         gpio_put(PICO_DEFAULT_LED_PIN, false);
         sleep_ms(SEND_DATA_DELAY);
-
-        // if (abs(temp.temperature - previous_predicted_temp) < (temp.temperature * MEASUREMENT_CORRECTNESS)) {
-        //     sleep_ms(SEND_DATA_DELAY * NUMBER_OF_PREDICTED_MEASUREMENTS);
-        //     iter_for_prediction += NUMBER_OF_PREDICTED_MEASUREMENTS;
-        // } else {
-        //     sleep_ms(SEND_DATA_DELAY);
-        //     iter_for_prediction ++;
-        // }
     }
 
     return 0;
