@@ -126,6 +126,7 @@ target_include_directories(pico_lorawan INTERFACE
 target_link_libraries(pico_lorawan INTERFACE pico_loramac_node)
 
 add_subdirectory(engine/temperature_measurement)
+add_subdirectory(examples/hello_otaa)
 add_subdirectory(./lib/pico-arduino-compat/libs/adafruit-sht4x-library)
 add_subdirectory(./lib/adafruit-sensor)
 add_subdirectory(./lib/rapidjson)

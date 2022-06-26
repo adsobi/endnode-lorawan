@@ -255,6 +255,11 @@ int adjust_antenna_power(int rssi)
     else if (rssi > -20) TX_POWER_6;
 }
 
+float round_with_2_precision(double value)
+{
+    return round((value * 100)) / 100;
+}
+
 int main(void)
 {
     std::vector<double> temp_measurements;
@@ -272,10 +277,10 @@ int main(void)
 
     // Initialize stdio and wait for USB CDC connect
     stdio_init_all();
-    while (!tud_cdc_connected())
-    {
-        tight_loop_contents();
-    }
+    // while (!tud_cdc_connected())
+    // {
+    //     tight_loop_contents();
+    // }
 
     // Initialize SHT40 sensor
     init_sht4x_sensor();
@@ -339,7 +344,7 @@ int main(void)
         writer.Key("delay");
         writer.Int64(SEND_DATA_DELAY);
         writer.Key("0");
-        writer.Double(temp.temperature);
+        writer.Double(round_with_2_precision(temp.temperature));
 
         // If 10 values are in buffer start prediction of temperature
         if (params.first != 0 && params.second != 0) {
@@ -347,7 +352,7 @@ int main(void)
             previous_predicted_temp = predicted_temp;
             predicted_temp = predict_temp_value(temp.temperature, params);
             writer.Key("1");
-            writer.Double(predicted_temp);
+            writer.Double(round_with_2_precision(predicted_temp));
         }
 
         writer.EndObject();
