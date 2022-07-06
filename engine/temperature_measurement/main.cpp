@@ -15,7 +15,7 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 #include "Adafruit_SHT4x.h"
-#include "tusb.h"
+//#include "tusb.h"
 
 extern "C"
 {
@@ -24,10 +24,10 @@ extern "C"
 }
 
 #define RECEIVE_DELAY                           2000
-#define SEND_DATA_DELAY                         5000
+#define SEND_DATA_DELAY                         3000
 #define SIZE_OF_MEASUREMENTS_BUFFER             10
 #define MEASUREMENT_CORRECTNESS                 0.02
-#define NUMBER_OF_PREDICTED_MEASUREMENTS        2
+#define NUMBER_OF_PREDICTED_MEASUREMENTS        3
 #define LORAWAN_APP_DATA_BUFFER_MAX_SIZE        242
 #define ANTENNA_ITER_THRESHOLD                  20
 
@@ -197,68 +197,79 @@ void measure_freqs(void) {
 // ------------------------------ SLEEP - END ----------------------------------
 
 // ---------------------------- PREDICTION - START -----------------------------
-bool custom_sort(double a, double b) {
-    double  a1=abs(a-0);
-    double  b1=abs(b-0);
+bool custom_sort(double a, double b)
+{
+    double a1=abs(a-0);
+    double b1=abs(b-0);
     return a1<b1;
 }
 
 static void update_params_for_prediction(
-    std::vector<double>& y,
+    std::vector<double>& buffer,
     std::pair<double, double>& params
 ) {
    /*Intialization Phase*/
-    double x[SIZE_OF_MEASUREMENTS_BUFFER];
-    for (int i = 0; i < SIZE_OF_MEASUREMENTS_BUFFER; i++) x[i] = i;
-    std::vector<double>error;
     double err;
     double alpha = 0.01;
     params.first = 0.00;
     params.second = 0.00;
 
     /*Training Phase*/
-    for (int i = 0; i < 2000; i ++) {   // since there are 5 values and we want 4 epochs so run for loop for 20 times
-        int idx = i % 10;              //for accessing index after every epoch
-        double p = params.first + params.second * x[idx];  //calculating prediction
-        err = p - y[idx];              // calculating error
-        params.first = params.first - alpha * err;         // updating b0
-        params.second = params.second - alpha * err * x[idx];// updating b1
-        //printf("B0=%f B1=%f error=%f\n", params.first, params.second, err);// printing values after every updation
-        error.push_back(err);
+    for (int epoch = 0; epoch < 2000; epoch ++)
+    {
+        int idx = epoch % SIZE_OF_MEASUREMENTS_BUFFER;
+        double p = params.first + params.second * idx;
+        err = p - buffer[idx];
+        params.first = params.first - alpha * err;
+        params.second = params.second - alpha * err * idx;
     }
-
-    y.erase(y.begin());
+    printf("Final Values are: B0=%f B1=%f\n", params.first, params.second);
     iter_for_prediction = 0;
-    sort(error.begin(),error.end(),custom_sort);//sorting based on error values
-    printf("Final Values are: B0=%f B1=%f error=%f\n", params.first, params.second, error[0]);
-    uart_default_tx_wait_blocking();
 }
 
 double predict_temp_value(float& actual_temp, std::pair<double, double>& params)
 {
-    double predicted_value = params.first + (params.second * (SIZE_OF_MEASUREMENTS_BUFFER + iter_for_prediction));
-    printf("Pedicted: %f\n", predicted_value);
-    uart_default_tx_wait_blocking();
+    double predicted_value = params.first +
+        (params.second * (SIZE_OF_MEASUREMENTS_BUFFER + iter_for_prediction));
     return predicted_value;
 }
 
 // ---------------------------- PREDICTION - END -------------------------------
 
-int adjust_antenna_power(int rssi)
+int set_antenna_power(int rssi)
 {
     if (rssi <= -100) return TX_POWER_0;
-    else if (rssi <= -85 && rssi > -100) TX_POWER_1;
-    else if (rssi <= -70 && rssi > -85) TX_POWER_2;
-    else if (rssi <= -55 && rssi > -70) TX_POWER_3;
-    else if (rssi <= -40 && rssi > -55) TX_POWER_4;
-    else if (rssi <= -20 && rssi > -40) TX_POWER_5;
-    else if (rssi > -20) TX_POWER_6;
+    else if (rssi <= -85 && rssi > -100) return TX_POWER_1;
+    else if (rssi <= -70 && rssi > -85) return TX_POWER_2;
+    else if (rssi <= -55 && rssi > -70) return TX_POWER_3;
+    else if (rssi <= -40 && rssi > -55) return TX_POWER_4;
+    else if (rssi <= -20 && rssi > -40) return TX_POWER_5;
+    else if (rssi > -20) return TX_POWER_6;
 }
 
-float round_with_2_precision(double value)
+int increase_tx_power(int tx_power)
 {
-    return round((value * 100)) / 100;
+    if (tx_power > TX_POWER_0) return tx_power--;
+    return tx_power;
 }
+
+int decrease_tx_power(int tx_power)
+{
+    if (tx_power < TX_POWER_6) return tx_power++;
+    return tx_power;
+}
+
+int adjust_antenna_power(int rssi, int tx_power)
+{
+    if (rssi < -130) return increase_tx_power(tx_power);
+    else if (rssi > -100) return decrease_tx_power(tx_power);
+
+    return tx_power;
+}
+
+double round_with_2_precision(double value)
+{
+    return round((value * 100)) / 100;}
 
 int main(void)
 {
@@ -295,35 +306,31 @@ int main(void)
     lorawan_debug(true);
 
     // Initialize the LoRaWAN stack
-    printf("Initilizating LoRaWAN ... ");
-    if (lorawan_init_otaa(&sx1276_settings, LORAWAN_REGION, &otaa_settings) < 0)
-    {
+     printf("Initilizating LoRaWAN ... ");
+    if (lorawan_init_otaa(&sx1276_settings, LORAWAN_REGION, &otaa_settings) < 0) {
         printf("failed!!!\n");
-        while (true)
-        {
+        while (true) {
             tight_loop_contents();
         }
-    }
-    else
-    {
+    } else {
         printf("success!\n");
     }
 
     // Start the join process and wait
-    printf("Joining LoRaWAN network ...");
+    printf("Joining LoRaWAN network ... ");
     lorawan_join();
 
-    while (!lorawan_is_joined())
-    {
+    while (!lorawan_is_joined()) {
         lorawan_process();
-        //lorawan_process_timeout_ms(1000);
     }
-    printf(" joined successfully!\n");
-
+    bool antenna_gain_setted = false;
+    printf("joined successfully!\n");
+    uart_default_tx_wait_blocking();
     while (true)
     {
         rapidjson::StringBuffer message;
         rapidjson::Writer<rapidjson::StringBuffer> writer(message);
+        writer.SetMaxDecimalPlaces(2);
 
         // Read values from sensor
         sht4.getEvent(&humidity, &temp);
@@ -333,7 +340,7 @@ int main(void)
 
         // Update b0 and b1 params if buffer is filled and prediction is not correct
         if (
-            temp_measurements.size() == SIZE_OF_MEASUREMENTS_BUFFER &&
+            temp_measurements.size() > SIZE_OF_MEASUREMENTS_BUFFER &&
             abs(temp.temperature - previous_predicted_temp) > (temp.temperature * MEASUREMENT_CORRECTNESS)
         ){
             update_params_for_prediction(temp_measurements, params);
@@ -353,18 +360,21 @@ int main(void)
             predicted_temp = predict_temp_value(temp.temperature, params);
             writer.Key("1");
             writer.Double(round_with_2_precision(predicted_temp));
+            temp_measurements.erase(temp_measurements.begin());
         }
 
         writer.EndObject();
         printf("%s\n", message.GetString());
+        printf("BUFFER SIZE: %i\n", temp_measurements.size());
 
         if (
             temp_measurements.size() < SIZE_OF_MEASUREMENTS_BUFFER ||
             !(bool)(iter_for_prediction % NUMBER_OF_PREDICTED_MEASUREMENTS)
         )
         {
-            // send the internal temperature as a (signed) byte in an unconfirmed uplink message
-            if (lorawan_send_unconfirmed(message.GetString(), strlen(message.GetString()), 2, antenna_gain) < 0)
+            if (lorawan_send_unconfirmed(message.GetString(),
+                    strlen(message.GetString()), 2, antenna_gain
+                ) < 0)
             {
                 printf("failed!!!\n");
             }
@@ -381,22 +391,28 @@ int main(void)
                 printf("success!\n");
             }
 
-            // wait for up to 2 seconds for an event
             if (lorawan_process_timeout_ms(RECEIVE_DELAY) == 0)
             {
                 // check if a downlink message was received
-                receive_length = lorawan_receive(receive_buffer, sizeof(receive_buffer), &receive_port);
+                receive_length = lorawan_receive(
+                    receive_buffer, sizeof(receive_buffer), &receive_port
+                );
                 if (receive_length > -1)
                 {
-                    printf("received a %d byte message on port %d: ", receive_length, receive_port);
+                    printf("received a %d byte message on port %d: ",
+                        receive_length, receive_port);
 
                     for (int i = 0; i < receive_length; i++)
                     {
                         printf("%02x", receive_buffer[i]);
                     }
-
                     printf("\nRX RSSI: %i \n", lorawan_rx_rssi());
-                    antenna_gain = adjust_antenna_power(lorawan_rx_rssi());
+                    if (!antenna_gain_setted) {
+                        antenna_gain = set_antenna_power(lorawan_rx_rssi());
+                        antenna_gain_setted = true;
+                    } else {
+                        antenna_gain = adjust_antenna_power(lorawan_rx_rssi(), antenna_gain);
+                    }
                 }
             }
         }

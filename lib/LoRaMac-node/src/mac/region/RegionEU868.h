@@ -97,7 +97,7 @@ extern "C"
 /*!
  * Minimal Tx output power that can be used by the node
  */
-#define EU868_MIN_TX_POWER                          TX_POWER_7
+#define EU868_MIN_TX_POWER                          TX_POWER_9
 
 /*!
  * Maximal Tx output power that can be used by the node
@@ -112,7 +112,7 @@ extern "C"
 /*!
  * Default Max EIRP
  */
-#define EU868_DEFAULT_MAX_EIRP                      16.0f
+#define EU868_DEFAULT_MAX_EIRP                      23.0f
 
 /*!
  * Default antenna gain
