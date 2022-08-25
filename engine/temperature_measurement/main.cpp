@@ -24,10 +24,10 @@ extern "C"
 }
 
 #define RECEIVE_DELAY                           2000
-#define SEND_DATA_DELAY                         3000
+#define SEND_DATA_DELAY                         8000
 #define SIZE_OF_MEASUREMENTS_BUFFER             10
 #define MEASUREMENT_CORRECTNESS                 0.02
-#define NUMBER_OF_PREDICTED_MEASUREMENTS        3
+#define NUMBER_OF_PREDICTED_MEASUREMENTS        1
 #define LORAWAN_APP_DATA_BUFFER_MAX_SIZE        242
 #define ANTENNA_ITER_THRESHOLD                  20
 
@@ -204,7 +204,7 @@ bool custom_sort(double a, double b)
     return a1<b1;
 }
 
-static void update_params_for_prediction(
+static void forupdate_params_for_prediction(
     std::vector<double>& buffer,
     std::pair<double, double>& params
 ) {
@@ -397,16 +397,10 @@ int main(void)
                 receive_length = lorawan_receive(
                     receive_buffer, sizeof(receive_buffer), &receive_port
                 );
-                if (receive_length > -1)
+                if (receive_length > -1 && lorawan_rx_rssi() != NULL)
                 {
-                    printf("received a %d byte message on port %d: ",
-                        receive_length, receive_port);
+                    iter_for_antenna_gain = 0;
 
-                    for (int i = 0; i < receive_length; i++)
-                    {
-                        printf("%02x", receive_buffer[i]);
-                    }
-                    printf("\nRX RSSI: %i \n", lorawan_rx_rssi());
                     if (!antenna_gain_setted) {
                         antenna_gain = set_antenna_power(lorawan_rx_rssi());
                         antenna_gain_setted = true;
